@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { padding: 10px; font-size: 13px; background-color: #f8f9fa; }
+    /* タブ周り */
+    .nav-tabs .nav-link { color: #495057; font-size: 12px; padding: 8px 10px; }
+    .nav-tabs .nav-link.active { font-weight: bold; color: #0d6efd; }
+    
+    /* カンペエリア */
+    .timer-badge { background: #e9ecef; color: #495057; padding: 2px 6px; border-radius: 4px; font-size: 11px; float: right; }
+    .company-info-box { background: #e7f1ff; border-left: 3px solid #0d6efd; padding: 8px; font-size: 12px; margin-bottom: 10px; }
+    
+    /* 議事録（チャット風）エリア */
+    #qa-container { height: 300px; overflow-y: auto; background: white; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+    .qa-item { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
+    .qa-q { color: #d63384; font-weight: bold; margin-bottom: 2px; } /* 質問はピンク */
+    .qa-a { color: #0f5132; margin-left: 10px; } /* 回答は緑 */
+    
+    /* スロットアイテム（日程調整） */
+    .slot-item { cursor: pointer; transition: all 0.2s; }
+    .slot-item:hover { background-color: #e9ecef; }
+    
+    /* 共通 */
+    textarea { resize: vertical; min-height: 80px; font-size: 12px; }
+    .btn-xs { padding: 2px 5px; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <div class="mb-3">
+    <select id="company-select" class="form-select form-select-sm" onchange="loadCompanyData()">
+      <option value="" selected>企業を選択してください...</option>
+      </select>
+  </div>
+
+  <ul class="nav nav-tabs mb-3" id="mainTab" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-target="#prep" data-bs-toggle="tab">📝 準備</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-target="#live" data-bs-toggle="tab">🎙 本番</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-target="#schedule" data-bs-toggle="tab">🗓 日程</button></li>
+    <li class="nav-item"><button class="nav-link text-warning fw-bold" data-bs-target="#offer" data-bs-toggle="tab">⚖️ オファー</button></li>
+    <li class="nav-item"><button class="nav-link text-success fw-bold" data-bs-target="#register" data-bs-toggle="tab">📥 登録</button></li>
+  </ul>
+
+  <div class="tab-content">
+
+    <div class="tab-pane fade show active" id="prep">
+      <div class="mb-2">
+        <label class="form-label fw-bold small">求人情報・特徴メモ</label>
+        <textarea id="prep-business" class="form-control form-control-sm" style="min-height: 120px;" placeholder="登録タブからインポートするとここに表示されます"></textarea>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label fw-bold small">
+          志望動機 (個別)
+          <span id="motivation-timer" class="timer-badge">0文字 / 0.0分</span>
+        </label>
+        <textarea id="prep-motivation" class="form-control" rows="6" 
+          placeholder="なぜこの会社なのか？" oninput="calcTime(this)"></textarea>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small">逆質問リスト</label>
+        <textarea id="prep-questions" class="form-control" rows="4" placeholder="・1日のスケジュールは？&#13;&#10;・評価制度について..."></textarea>
+      </div>
+
+      <div class="company-info-box">
+        <strong>💡 共通の転職軸:</strong><br>
+        <span id="common-reason">Loading...</span>
+      </div>
+
+      <button class="btn btn-primary btn-sm w-100" onclick="savePrep()">💾 準備データを保存</button>
+    </div>
+
+    <div class="tab-pane fade" id="live">
+      <div class="d-flex justify-content-between mb-2">
+        <input type="text" id="live-interviewer" class="form-control form-control-sm me-2" placeholder="面接官名">
+        <button class="btn btn-outline-danger btn-sm" onclick="clearLog()">Clear</button>
+      </div>
+
+      <div id="qa-container">
+        <div class="text-muted text-center small mt-5">ここにQAログが追加されます</div>
+      </div>
+
+      <div class="mb-2">
+        <div class="input-group mb-1">
+          <span class="input-group-text bg-light text-danger small">Q</span>
+          <input type="text" id="input-q" class="form-control form-control-sm" placeholder="聞かれたこと">
+        </div>
+        <div class="input-group">
+          <span class="input-group-text bg-light text-success small">A</span>
+          <textarea id="input-a" class="form-control form-control-sm" placeholder="答えたこと（メモ）" rows="2"></textarea>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm w-100 mb-3" onclick="addQA()">➕ ログに追加 (Enter)</button>
+
+      <div class="border-top pt-2">
+        <label class="form-label fw-bold small">所感・ネクストアクション</label>
+        <textarea id="live-impression" class="form-control form-control-sm mb-2" rows="2"></textarea>
+        <button class="btn btn-danger btn-sm w-100" onclick="saveMinutes()">🏁 面接終了＆議事録保存</button>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="schedule">
+      <div class="mb-2 border-bottom pb-2">
+         <label class="form-label fw-bold small text-primary">検索範囲</label>
+         <div class="input-group input-group-sm mb-1">
+           <span class="input-group-text">From</span>
+           <input type="date" id="sched-start" class="form-control">
+         </div>
+         <div class="input-group input-group-sm mb-2">
+           <span class="input-group-text">To&nbsp;&nbsp;&nbsp;&nbsp;</span>
+           <input type="date" id="sched-end" class="form-control">
+         </div>
+         
+         <label class="form-label fw-bold small text-primary">所要時間 (分)</label>
+         <div class="input-group input-group-sm mb-2">
+           <input type="number" id="sched-duration" class="form-control" value="60" step="15">
+           <span class="input-group-text">分</span>
+           <button class="btn btn-primary" onclick="searchSlots()">🔍 検索</button>
+         </div>
+      </div>
+
+      <div id="slots-container" class="mb-2 border rounded p-2 bg-white" style="height: 150px; overflow-y: auto;">
+        <div class="text-center text-muted small mt-4">条件を指定して検索してください</div>
+      </div>
+      
+      <label class="form-label fw-bold small">出力結果 (選択してコピー)</label>
+      <textarea id="result-area" class="form-control mb-2" rows="4"></textarea>
+      <button class="btn btn-success btn-sm w-100" onclick="copyToClip()">📋 コピー</button>
+    </div>
+
+    <div class="tab-pane fade" id="offer">
+      <div class="alert alert-warning p-2 small mb-2">
+        <i class="fas fa-balance-scale"></i> 内定が出たら条件を入力。<br>
+        重み付けスコアで客観的に比較します。
+      </div>
+
+      <div class="mb-2 border-bottom pb-2">
+        <label class="form-label fw-bold small text-primary">💰 提示年収 (Q.給与は?)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" id="offer-salary" class="form-control" placeholder="例: 6500000">
+          <span class="input-group-text">円</span>
+        </div>
+      </div>
+
+      <div class="mb-2 border-bottom pb-2">
+        <label class="form-label fw-bold small text-primary">🏢 働き方・福利厚生 (Q.リモートは?)</label>
+        <textarea id="offer-workstyle" class="form-control form-control-sm" rows="2" placeholder="フルリモート可、コアタイムなし、書籍購入補助あり..."></textarea>
+        
+        <div class="mt-1 d-flex align-items-center justify-content-between">
+           <span class="small">働き方満足度:</span>
+           <select id="offer-work-score" class="form-select form-select-sm w-50">
+             <option value="3">3 (普通)</option>
+             <option value="5">5 (最高)</option>
+             <option value="1">1 (不満)</option>
+           </select>
+        </div>
+      </div>
+
+      <div class="mb-2 border-bottom pb-2">
+        <label class="form-label fw-bold small text-primary">💻 技術・カルチャー (Q.環境は?)</label>
+        <div class="row g-2">
+          <div class="col-6">
+            <span class="small d-block">技術環境</span>
+            <select id="offer-tech-score" class="form-select form-select-sm">
+              <option value="3">3 (普通)</option>
+              <option value="5">5 (最高)</option>
+              <option value="1">1 (レガシー)</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <span class="small d-block">カルチャー</span>
+            <select id="offer-culture-score" class="form-select form-select-sm">
+              <option value="3">3 (普通)</option>
+              <option value="5">5 (マッチ)</option>
+              <option value="1">1 (合わない)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label fw-bold small text-success">💖 魅力ポイント (Q.なぜここ?)</label>
+        <textarea id="offer-pros" class="form-control form-control-sm" rows="2" placeholder="CTOが優秀、プロダクトの社会的意義..."></textarea>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label fw-bold small text-danger">🤔 懸念ポイント (Q.迷いは?)</label>
+        <textarea id="offer-cons" class="form-control form-control-sm" rows="2" placeholder="オンボーディング体制が未整備..."></textarea>
+      </div>
+
+      <button class="btn btn-warning btn-sm w-100 fw-bold mb-3" onclick="saveOffer()">📊 スコア計算 & 保存</button>
+
+      <div id="offer-ranking" class="bg-white border rounded p-2 small">
+        <div class="text-center text-muted">データなし</div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="register">
+      <div class="alert alert-success p-2 small mb-2">
+        <i class="fas fa-file-import"></i> 求人票の内容を入力してインポート。<br>
+        面接準備シートに自動反映されます。
+      </div>
+
+      <form id="reg-form" onsubmit="handleRegister(event)">
+        <div class="mb-2">
+          <label class="form-label fw-bold small">会社URL</label>
+          <div class="input-group input-group-sm">
+             <input type="url" name="url" class="form-control" id="reg-url" placeholder="https://..." onchange="tryFetchTitle()">
+          </div>
+          <div class="form-text" style="font-size:10px">URLを入力すると企業名を自動取得します</div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-bold small">企業名 <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control form-control-sm" id="reg-name" required>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-bold small">求人タイトル</label>
+          <input type="text" name="jobTitle" class="form-control form-control-sm" placeholder="例: シニアバックエンドエンジニア">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-bold small">想定給与</label>
+          <input type="text" name="salary" class="form-control form-control-sm" placeholder="例: 600-900万円">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label fw-bold small">仕事内容</label>
+          <textarea name="jobDescription" class="form-control form-control-sm" rows="4" placeholder="・Goを用いたAPI開発..."></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold small">求める人物像・スキル</label>
+          <textarea name="persona" class="form-control form-control-sm" rows="3" placeholder="・チーム開発経験3年以上..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 fw-bold">📥 インポート実行</button>
+      </form>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let qaLogData = []; 
+
+    // --- 初期化 ---
+    window.onload = function() {
+      google.script.run.withSuccessHandler(initSidebar).apiGetInitData();
+      updateOfferRanking();
+      
+      // 日付初期値
+      const today = new Date();
+      const nextWeek = new Date();
+      nextWeek.setDate(today.getDate() + 7);
+      
+      document.getElementById('sched-start').value = formatDateForInput(today);
+      document.getElementById('sched-end').value = formatDateForInput(nextWeek);
+    };
+
+    function formatDateForInput(date) {
+      const y = date.getFullYear();
+      const m = ('0' + (date.getMonth() + 1)).slice(-2);
+      const d = ('0' + date.getDate()).slice(-2);
+      return `${y}-${m}-${d}`;
+    }
+
+    function initSidebar(data) {
+      const select = document.getElementById('company-select');
+      // 現在の選択値を保持
+      const currentVal = select.value;
+      
+      select.innerHTML = '<option value="" selected>企業を選択してください...</option>';
+      data.companies.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.text = c.name;
+        select.appendChild(opt);
+      });
+      
+      if(currentVal) select.value = currentVal;
+      
+      document.getElementById('common-reason').textContent = data.commonReason;
+    }
+
+    function loadCompanyData() {
+      const companyId = document.getElementById('company-select').value;
+      if(!companyId) return;
+
+      google.script.run.withSuccessHandler(fillPrepData).apiGetPrepData(companyId);
+      google.script.run.withSuccessHandler(fillOfferData).apiGetOfferDetail(companyId);
+    }
+
+    // --- Tab 1 (Prep) ---
+    function fillPrepData(data) {
+      document.getElementById('prep-business').value = data.businessContent;
+      document.getElementById('prep-motivation').value = data.motivation;
+      document.getElementById('prep-questions').value = data.questions;
+      calcTime(document.getElementById('prep-motivation')); 
+    }
+
+    function calcTime(el) {
+      const len = el.value.length;
+      const min = (len / 300).toFixed(1);
+      document.getElementById('motivation-timer').textContent = `${len}文字 / 約${min}分`;
+    }
+
+    function savePrep() {
+      const select = document.getElementById('company-select');
+      if(!select.value) { alert("企業を選択してください"); return; }
+
+      const form = {
+        companyId: select.value,
+        companyName: select.options[select.selectedIndex].text,
+        businessContent: document.getElementById('prep-business').value,
+        motivation: document.getElementById('prep-motivation').value,
+        questions: document.getElementById('prep-questions').value
+      };
+
+      const btn = event.target;
+      const originalText = btn.textContent;
+      btn.textContent = "保存中...";
+      
+      google.script.run.withSuccessHandler(() => {
+        btn.textContent = originalText;
+        alert("準備データを保存しました");
+      }).apiSavePrepData(form);
+    }
+
+    // --- Tab 2 (Live) ---
+    function addQA() {
+      const q = document.getElementById('input-q').value;
+      const a = document.getElementById('input-a').value;
+      if(!q && !a) return;
+
+      qaLogData.push({ q: q, a: a });
+      
+      const container = document.getElementById('qa-container');
+      if(qaLogData.length === 1) container.innerHTML = ''; 
+
+      const div = document.createElement('div');
+      div.className = 'qa-item';
+      div.innerHTML = `<div class="qa-q">Q. ${q}</div><div class="qa-a">A. ${a}</div>`;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+
+      document.getElementById('input-q').value = '';
+      document.getElementById('input-a').value = '';
+      document.getElementById('input-q').focus();
+    }
+
+    function saveMinutes() {
+      const select = document.getElementById('company-select');
+      if(!select.value) { alert("企業を選択してください"); return; }
+      if(qaLogData.length === 0) { if(!confirm("QAログが空ですが保存しますか？")) return; }
+
+      const data = {
+        companyId: select.value,
+        interviewer: document.getElementById('live-interviewer').value,
+        qaLog: qaLogData,
+        impression: document.getElementById('live-impression').value,
+        nextSteps: "要確認"
+      };
+
+      google.script.run.withSuccessHandler(() => {
+        alert("議事録を保存しました。");
+        clearLog();
+      }).apiSaveMinutes(data);
+    }
+
+    function clearLog() {
+      qaLogData = [];
+      document.getElementById('qa-container').innerHTML = '<div class="text-muted text-center small mt-5">ここにQAログが追加されます</div>';
+      document.getElementById('live-impression').value = '';
+    }
+
+    // --- Tab 3 (Schedule) ---
+    function searchSlots() {
+      const start = document.getElementById('sched-start').value;
+      const end = document.getElementById('sched-end').value;
+      const duration = document.getElementById('sched-duration').value;
+
+      if(!start || !end || !duration) {
+        alert("期間と時間を入力してください");
+        return;
+      }
+
+      document.getElementById('slots-container').innerHTML = '<div class="text-center mt-4"><div class="spinner-border spinner-border-sm text-primary"></div><div class="small text-muted">カレンダー確認中...</div></div>';
+      
+      google.script.run
+        .withSuccessHandler(showSlots)
+        .withFailureHandler(alert)
+        .apiGetFreeSlots(start, end, duration);
+    }
+    
+    function showSlots(slots) {
+      const container = document.getElementById('slots-container');
+      container.innerHTML = '';
+      
+      if(slots.length == 0) { 
+        container.innerHTML = '<div class="text-danger text-center small mt-4">条件に合う空き枠がありませんでした。<br>条件を広げて再検索してください。</div>'; 
+        return; 
+      }
+      
+      slots.forEach(s => {
+        const d = document.createElement('div');
+        d.className = 'slot-item border-bottom p-1 small';
+        d.textContent = s;
+        d.onclick = () => {
+          if (d.classList.contains('bg-primary')) {
+            d.classList.remove('bg-primary', 'text-white');
+          } else {
+            d.classList.add('bg-primary', 'text-white');
+          }
+          updateResult();
+        };
+        container.appendChild(d);
+      });
+    }
+
+    function updateResult() {
+      const selectedEls = document.querySelectorAll('.slot-item.bg-primary');
+      const selectedTexts = Array.from(selectedEls).map(e => e.textContent);
+      
+      if (selectedTexts.length === 0) {
+        document.getElementById('result-area').value = "";
+        return;
+      }
+      document.getElementById('result-area').value = 
+        "以下の日程で調整可能です。\n\n" + selectedTexts.join('\n') + "\n\nご確認のほどよろしくお願いいたします。";
+    }
+
+    function copyToClip() {
+      const el = document.getElementById('result-area');
+      if(!el.value) return;
+      el.select();
+      document.execCommand('copy');
+    }
+
+    // --- Tab 4 (Offer) ---
+    function fillOfferData(data) {
+      if(data) {
+        document.getElementById('offer-salary').value = data.salary;
+        document.getElementById('offer-workstyle').value = data.workStyleText;
+        document.getElementById('offer-work-score').value = 3; 
+        document.getElementById('offer-tech-score').value = data.techEnvScore;
+        document.getElementById('offer-culture-score').value = data.cultureScore;
+        document.getElementById('offer-pros').value = data.pros;
+        document.getElementById('offer-cons').value = data.cons;
+      } else {
+        document.getElementById('offer-salary').value = '';
+        document.getElementById('offer-workstyle').value = '';
+        document.getElementById('offer-pros').value = '';
+        document.getElementById('offer-cons').value = '';
+      }
+    }
+
+    function saveOffer() {
+      const select = document.getElementById('company-select');
+      if(!select.value) { alert("企業を選択してください"); return; }
+
+      const form = {
+        companyId: select.value,
+        companyName: select.options[select.selectedIndex].text,
+        salary: document.getElementById('offer-salary').value || 0,
+        workStyleText: document.getElementById('offer-workstyle').value,
+        workStyleScore: document.getElementById('offer-work-score').value,
+        techEnvScore: document.getElementById('offer-tech-score').value,
+        cultureScore: document.getElementById('offer-culture-score').value,
+        pros: document.getElementById('offer-pros').value,
+        cons: document.getElementById('offer-cons').value
+      };
+
+      google.script.run.withSuccessHandler((res) => {
+        alert(`保存しました！ 総合スコア: ${res.score}点`);
+        updateOfferRanking();
+      }).apiSaveOffer(form);
+    }
+
+    function updateOfferRanking() {
+      google.script.run.withSuccessHandler(renderRanking).apiGetOfferComparison();
+    }
+
+    function renderRanking(list) {
+      const div = document.getElementById('offer-ranking');
+      div.innerHTML = '<h6 class="fw-bold border-bottom mb-2">🏆 オファーランキング</h6>';
+      if(list.length === 0) {
+        div.innerHTML += '<div class="text-muted text-center">データがありません</div>';
+        return;
+      }
+      list.forEach((item, index) => {
+        const medal = index === 0 ? '🥇' : (index === 1 ? '🥈' : '🥉');
+        const salaryStr = parseInt(item.salary).toLocaleString();
+        div.innerHTML += `
+          <div class="d-flex justify-content-between align-items-center mb-1 p-1 ${index===0 ? 'bg-light' : ''}">
+             <div class="text-truncate" style="max-width: 110px;">${medal} <strong>${item.name}</strong></div>
+             <div class="text-end">
+               <span class="badge bg-light text-dark border me-1">${salaryStr}</span>
+               <span class="badge bg-warning text-dark border border-dark">${item.score}pt</span>
+             </div>
+          </div>`;
+      });
+    }
+
+    // --- Tab 5 (Register) ---
+    function tryFetchTitle() {
+      const url = document.getElementById('reg-url').value;
+      const nameInput = document.getElementById('reg-name');
+      if(url && !nameInput.value) {
+        nameInput.placeholder = "取得中...";
+        google.script.run.withSuccessHandler(title => {
+          if(title) nameInput.value = title;
+          nameInput.placeholder = "";
+        }).apiFetchTitle(url);
+      }
+    }
+
+    function handleRegister(e) {
+      e.preventDefault();
+      const btn = document.querySelector('#reg-form button');
+      btn.textContent = "インポート中...";
+      btn.disabled = true;
+
+      const form = {
+        name: e.target.name.value,
+        url: e.target.url.value,
+        jobTitle: e.target.jobTitle.value,
+        salary: e.target.salary.value,
+        jobDescription: e.target.jobDescription.value,
+        persona: e.target.persona.value
+      };
+
+      google.script.run.withSuccessHandler((res) => {
+        alert(`「${res.name}」を登録しました。\n「準備」タブで詳細を確認できます。`);
+        document.getElementById('reg-form').reset();
+        btn.textContent = "📥 インポート実行";
+        btn.disabled = false;
+        
+        // 企業リスト再読み込み
+        google.script.run.withSuccessHandler(initSidebar).apiGetInitData();
+      }).apiRegisterCompany(form);
+    }
+  </script>
+</body>
+</html>
